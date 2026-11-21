@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ableitungs-Memory</title>
+<style>
+  :root{
+    --gelb:#FFD93B; --gelb-rand:#c9a400; --gruen:#4CAF50; --rot:#E53935;
+    --text:#1f2937; --bg:#f3f4f6; --akzent:#1e3a8a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  .wrap{max-width:980px;margin:0 auto;padding:16px}
+  h1{margin:8px 0;color:var(--akzent);text-align:center;font-size:clamp(1.5rem,4vw,2.2rem)}
+  .hidden{display:none !important}
+
+  /* Startbildschirm */
+  #start{background:#fff;border-radius:16px;padding:28px;box-shadow:0 4px 18px rgba(0,0,0,.1);margin-top:24px;text-align:center}
+  #start p{font-size:1.1rem;line-height:1.5;max-width:640px;margin:10px auto}
+  .levels{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+  .lvl{flex:1 1 220px;max-width:280px;border:3px solid var(--akzent);background:#fff;border-radius:14px;padding:16px;cursor:pointer;font:inherit;color:var(--text);transition:transform .1s, background .15s}
+  .lvl:hover,.lvl:focus-visible{background:#e0e7ff;transform:translateY(-2px);outline:none}
+  .lvl b{display:block;font-size:1.3rem;color:var(--akzent);margin-bottom:6px}
+  .lvl span{font-size:.95rem;line-height:1.35}
+
+  /* Statusleiste */
+  .bar{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin:10px 0}
+  .stat{background:#fff;border-radius:10px;padding:8px 14px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+  .btn{font:inherit;font-weight:600;border:none;border-radius:10px;padding:9px 16px;background:var(--akzent);color:#fff;cursor:pointer}
+  .btn.sec{background:#6b7280}
+  .btn:hover{filter:brightness(1.12)}
+
+  /* Spielfeld */
+  #grid{display:grid;grid-template-columns:repeat(5,1fr);gap:clamp(6px,1.4vw,12px)}
+  .card{
+    background:var(--gelb);border:3px solid var(--gelb-rand);border-radius:10px;
+    aspect-ratio:1.45/1;display:flex;align-items:center;justify-content:center;text-align:center;
+    padding:4px;cursor:pointer;user-select:none;font:inherit;color:var(--text);
+    font-size:clamp(.72rem,1.85vw,1.3rem);line-height:1.25;transition:background .2s, transform .1s;
+    overflow:hidden;
+  }
+  .card:hover:not(:disabled){transform:scale(1.03)}
+  .card.sel{border-color:var(--akzent);box-shadow:0 0 0 4px rgba(30,58,138,.35)}
+  .card.ok{background:var(--gruen);border-color:#2e7d32;color:#fff;cursor:default}
+  .card.bad{background:var(--rot);border-color:#b71c1c;color:#fff;cursor:not-allowed}
+  .term{display:inline-block}
+  .lbl{opacity:.8}
+  /* Brüche */
+  .frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 2px}
+  .frac>span:first-child{border-bottom:2px solid currentColor;padding:0 4px 1px}
+  .frac>span:last-child{padding:1px 4px 0}
+  sup{font-size:.7em;line-height:0}
+
+  /* Dialog */
+  #overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+  #dialog{background:#fff;border-radius:18px;padding:28px;max-width:520px;width:100%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+  #dialog h2{margin:0 0 8px;color:var(--akzent);font-size:1.8rem}
+  #dialog .big{font-size:3rem;margin:4px 0}
+  #dialog p{font-size:1.15rem;line-height:1.45}
+  #dialog .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📐 Ableitungs-Memory</h1>
+
+  <section id="start">
+    <p>Finde die <b>zusammengehörigen Paare</b>: Klicke eine Funktion und ihre Ableitungsfunktion an.
+       Richtige Paare werden grün, falsche Paare blinken 2 Sekunden lang rot.
+       Aber Vorsicht: Ein Kästchen gehört zu keinem Paar!</p>
+    <p><b>Wähle deinen Schwierigkeitsgrad:</b></p>
+    <div class="levels">
+      <button class="lvl" data-level="leicht"><b>🟢 Leicht</b><span>Potenz-, Faktor- und Summenregel</span></button>
+      <button class="lvl" data-level="mittel"><b>🟡 Mittel</b><span>Wurzeln, Brüche, eˣ, sin, cos, ln, einfache Verkettung</span></button>
+      <button class="lvl" data-level="schwer"><b>🔴 Schwer</b><span>Produkt-, Quotienten- und Kettenregel</span></button>
+    </div>
+  </section>
+
+  <section id="game" class="hidden">
+    <div class="bar">
+      <div class="stat" id="sLevel"></div>
+      <div class="stat" id="sPairs"></div>
+      <div class="stat" id="sErr"></div>
+      <div class="stat" id="sTime"></div>
+    </div>
+    <div id="grid" role="grid" aria-label="Spielfeld"></div>
+    <div class="bar" style="margin-top:14px">
+      <button class="btn" id="bNew">🔄 Neues Spiel (gleiche Stufe)</button>
+      <button class="btn sec" id="bLevel">Schwierigkeit wechseln</button>
+    </div>
+  </section>
+</div>
+
+<div id="overlay" class="hidden">
+  <div id="dialog">
+    <div class="big" id="dEmoji"></div>
+    <h2 id="dTitle"></h2>
+    <p id="dText"></p>
+    <div class="row">
+      <button class="btn" id="dAgain">Nochmal spielen</button>
+      <button class="btn sec" id="dLevel">Andere Stufe</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- Hilfsfunktionen zur Darstellung ---------- */
+const sup = s => `<sup>${s}</sup>`;
+const fr  = (n, d) => `<span class="frac"><span>${n}</span><span>${d}</span></span>`;
+const e   = x => `e${sup(x)}`;
+const MINUS = '−';
+
+/* ---------- Aufgabenpools: [Funktion, Ableitung] ---------- */
+const POOLS = {
+  leicht: [
+    [`x${sup(3)}`, `3x${sup(2)}`],
+    [`x${sup(4)}`, `4x${sup(3)}`],
+    [`x${sup(5)}`, `5x${sup(4)}`],
+    [`x${sup(6)}`, `6x${sup(5)}`],
+    [`x${sup(2)}`, `2x`],
+    [`5x${sup(2)}`, `10x`],
+    [`3x${sup(4)}`, `12x${sup(3)}`],
+    [`2x${sup(3)}`, `6x${sup(2)}`],
+    [`7x`, `7`],
+    [`${MINUS}2x${sup(3)}`, `${MINUS}6x${sup(2)}`],
+    [`x${sup(2)} + 3x`, `2x + 3`],
+    [`x${sup(3)} ${MINUS} 4x`, `3x${sup(2)} ${MINUS} 4`],
+    [`2x${sup(3)} + x${sup(2)}`, `6x${sup(2)} + 2x`],
+    [`x${sup(4)} ${MINUS} 2x${sup(2)}`, `4x${sup(3)} ${MINUS} 4x`],
+    [`3x${sup(2)} ${MINUS} 5x + 1`, `6x ${MINUS} 5`],
+    [`x${sup(5)} + 2x`, `5x${sup(4)} + 2`],
+    [`4x${sup(3)} ${MINUS} 6x${sup(2)}`, `12x${sup(2)} ${MINUS} 12x`],
+    [`${fr(1,2)}x${sup(4)}`, `2x${sup(3)}`],
+    [`${fr(1,3)}x${sup(3)}`, `x${sup(2)}`],
+    [`x${sup(3)} + x${sup(2)} + x`, `3x${sup(2)} + 2x + 1`],
+    [`6x${sup(2)} + 4`, `12x`],
+    [`10x ${MINUS} 3`, `10`],
+    [`2x${sup(5)} ${MINUS} x${sup(3)}`, `10x${sup(4)} ${MINUS} 3x${sup(2)}`]
+  ],
+  mittel: [
+    [`√x`, fr(1, `2√x`)],
+    [`5√x`, fr(5, `2√x`)],
+    [fr(1,'x'), `${MINUS}${fr(1, `x${sup(2)}`)}`],
+    [fr(1, `x${sup(2)}`), `${MINUS}${fr(2, `x${sup(3)}`)}`],
+    [fr(1, `x${sup(3)}`), `${MINUS}${fr(3, `x${sup(4)}`)}`],
+    [fr(4,'x'), `${MINUS}${fr(4, `x${sup(2)}`)}`],
+    [`3·${e('x')}`, `3·${e('x')}`],
+    [`${e('x')} + x${sup(2)}`, `${e('x')} + 2x`],
+    [`sin(x)`, `cos(x)`],
+    [`cos(x)`, `${MINUS}sin(x)`],
+    [`2·sin(x)`, `2·cos(x)`],
+    [`3·cos(x)`, `${MINUS}3·sin(x)`],
+    [`ln(x)`, fr(1,'x')],
+    [`2·ln(x)`, fr(2,'x')],
+    [`ln(x) + x`, `${fr(1,'x')} + 1`],
+    [e('2x'), `2·${e('2x')}`],
+    [e('3x'), `3·${e('3x')}`],
+    [e(`${MINUS}x`), `${MINUS}${e(`${MINUS}x`)}`],
+    [e('0,5x'), `0,5·${e('0,5x')}`],
+    [`sin(3x)`, `3·cos(3x)`],
+    [`cos(2x)`, `${MINUS}2·sin(2x)`],
+    [`x${sup(2)} + sin(x)`, `2x + cos(x)`],
+    [`x${sup(2)} ${MINUS} cos(x)`, `2x + sin(x)`],
+    [`x${sup(3)} + ${fr(1,'x')}`, `3x${sup(2)} ${MINUS} ${fr(1, `x${sup(2)}`)}`],
+    [`√x + x`, `${fr(1, `2√x`)} + 1`]
+  ],
+  schwer: [
+    [`x·${e('x')}`, `(1 + x)·${e('x')}`],
+    [`x${sup(2)}·${e('x')}`, `(2x + x${sup(2)})·${e('x')}`],
+    [`x${sup(3)}·${e('x')}`, `(3x${sup(2)} + x${sup(3)})·${e('x')}`],
+    [`(x ${MINUS} 1)·${e('x')}`, `x·${e('x')}`],
+    [`x·${e('2x')}`, `(1 + 2x)·${e('2x')}`],
+    [`x·sin(x)`, `sin(x) + x·cos(x)`],
+    [`x${sup(2)}·cos(x)`, `2x·cos(x) ${MINUS} x${sup(2)}·sin(x)`],
+    [`x·ln(x)`, `ln(x) + 1`],
+    [`(x${sup(2)} + 1)(x ${MINUS} 2)`, `3x${sup(2)} ${MINUS} 4x + 1`],
+    [`(3x + 1)${sup(4)}`, `12(3x + 1)${sup(3)}`],
+    [`(2x ${MINUS} 5)${sup(3)}`, `6(2x ${MINUS} 5)${sup(2)}`],
+    [`(x${sup(2)} + 1)${sup(3)}`, `6x(x${sup(2)} + 1)${sup(2)}`],
+    [`√(2x + 1)`, fr(1, `√(2x + 1)`)],
+    [`sin(x${sup(2)})`, `2x·cos(x${sup(2)})`],
+    [`cos(3x + 1)`, `${MINUS}3·sin(3x + 1)`],
+    [e(`x${sup(2)}`), `2x·${e(`x${sup(2)}`)}`],
+    [e('2x + 1'), `2·${e('2x + 1')}`],
+    [`ln(x${sup(2)} + 1)`, fr('2x', `x${sup(2)} + 1`)],
+    [fr('x', 'x + 1'), fr('1', `(x + 1)${sup(2)}`)],
+    [fr(`x${sup(2)}`, 'x + 1'), fr(`x${sup(2)} + 2x`, `(x + 1)${sup(2)}`)],
+    [fr('x + 2', 'x ' + MINUS + ' 1'), `${MINUS}${fr('3', `(x ${MINUS} 1)${sup(2)}`)}`],
+    [fr(e('x'), 'x'), fr(`(x ${MINUS} 1)·${e('x')}`, `x${sup(2)}`)],
+    [fr('sin(x)', 'x'), fr(`x·cos(x) ${MINUS} sin(x)`, `x${sup(2)}`)],
+    [fr('1', `x${sup(2)} + 1`), `${MINUS}${fr('2x', `(x${sup(2)} + 1)${sup(2)}`)}`]
+  ]
+};
+
+/* Störer: gehören zu keinem Paar der Pools (Funktion ohne passende Ableitung bzw. umgekehrt) */
+const STOERER = {
+  leicht: [
+    {type:'f', html:`x${sup(3)} + 7x${sup(2)}`},
+    {type:'d', html:`9x${sup(2)} ${MINUS} 2`}
+  ],
+  mittel: [
+    {type:'f', html:`5·ln(x) + x${sup(2)}`},
+    {type:'d', html:`${MINUS}4·sin(x)`}
+  ],
+  schwer: [
+    {type:'f', html:`x${sup(2)}·ln(x)`},
+    {type:'d', html:fr('3', `(x + 1)${sup(2)}`)}
+  ]
+};
+
+const LEVEL_NAME = {leicht:'🟢 Leicht', mittel:'🟡 Mittel', schwer:'🔴 Schwer'};
+
+/* ---------- Spielzustand ---------- */
+let level = null, cards = [], selected = null, errors = 0, found = 0;
+let startTime = 0, timerId = null, token = 0, finished = false;
+const $ = id => document.getElementById(id);
+
+function shuffle(a){
+  a = a.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+function fmtTime(ms){
+  const s = Math.floor(ms/1000);
+  return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+}
+
+function startGame(lv){
+  level = lv;
+  token++;                       // verwirft alte Timeouts
+  finished = false; selected = null; errors = 0; found = 0;
+
+  const chosen = shuffle(POOLS[lv]).slice(0,12);
+  cards = [];
+  chosen.forEach((p,i)=>{
+    cards.push({pair:i, type:'f', html:`<span class="lbl">f(x) =</span> ${p[0]}`});
+    cards.push({pair:i, type:'d', html:`<span class="lbl">f′(x) =</span> ${p[1]}`});
+  });
+  const st = STOERER[lv][Math.floor(Math.random()*2)];
+  cards.push({pair:-1, type:st.type,
+    html:`<span class="lbl">${st.type==='f'?'f(x) =':'f′(x) ='}</span> ${st.html}`});
+  cards = shuffle(cards).map(c=>({...c, state:'idle'}));
+
+  $('start').classList.add('hidden');
+  $('game').classList.remove('hidden');
+  $('overlay').classList.add('hidden');
+  $('sLevel').textContent = 'Stufe: ' + LEVEL_NAME[lv];
+  render(); updateStats();
+
+  clearInterval(timerId);
+  startTime = Date.now();
+  timerId = setInterval(()=>{ $('sTime').textContent = '⏱ ' + fmtTime(Date.now()-startTime); }, 500);
+  $('sTime').textContent = '⏱ 00:00';
+}
+
+function render(){
+  const g = $('grid');
+  g.innerHTML = '';
+  cards.forEach((c,i)=>{
+    const b = document.createElement('button');
+    b.className = 'card';
+    b.id = 'c'+i;
+    b.innerHTML = `<span class="term">${c.html}</span>`;
+    b.addEventListener('click', ()=>onClick(i));
+    g.appendChild(b);
+  });
+}
+
+function paint(i){
+  const c = cards[i], el = $('c'+i);
+  el.classList.remove('sel','ok','bad');
+  if(c.state==='sel') el.classList.add('sel');
+  if(c.state==='ok')  el.classList.add('ok');
+  if(c.state==='bad') el.classList.add('bad');
+  el.disabled = (c.state==='ok' || c.state==='bad');
+}
+
+function updateStats(){
+  $('sPairs').textContent = `Paare: ${found} / 12`;
+  $('sErr').textContent   = `Fehlversuche: ${errors}`;
+}
+
+function onClick(i){
+  if(finished) return;
+  const c = cards[i];
+  if(c.state==='ok' || c.state==='bad') return;
+
+  if(selected===null){                // erste Karte
+    c.state='sel'; selected=i; paint(i); return;
+  }
+  if(selected===i){                   // Auswahl aufheben
+    c.state='idle'; selected=null; paint(i); return;
+  }
+
+  const j = selected; selected = null;
+  const a = cards[j], b = c;
+  const match = a.pair!==-1 && a.pair===b.pair && a.type!==b.type;
+
+  if(match){
+    a.state = b.state = 'ok';
+    found++;
+    paint(i); paint(j); updateStats();
+    if(found===12) endGame();
+  } else {
+    a.state = b.state = 'bad';
+    errors++;
+    paint(i); paint(j); updateStats();
+    const myToken = token;
+    setTimeout(()=>{
+      if(myToken!==token) return;     // Spiel wurde inzwischen neu gestartet
+      a.state = b.state = 'idle';
+      paint(i); paint(j);
+    }, 2000);
+  }
+}
+
+function praise(n){
+  if(n===0)  return {emoji:'🏆', title:'Perfekt!',        text:'Keine Fehlversuche – du beherrschst die Ableitungsregeln wie ein Profi!'};
+  if(n<=3)   return {emoji:'🌟', title:'Sehr gut!',        text:'Fast fehlerfrei. Die Ableitungsregeln sitzen schon richtig gut!'};
+  if(n<=7)   return {emoji:'👍', title:'Gut gemacht!',     text:'Solide Leistung. Mit etwas mehr Übung wird es noch besser!'};
+  if(n<=12)  return {emoji:'💪', title:'Geschafft!',       text:'Du hast durchgehalten. Schau dir die Regeln, bei denen du unsicher warst, noch einmal an.'};
+  return            {emoji:'📚', title:'Durchgehalten!',   text:'Das war ein hartes Stück Arbeit – und du bist drangeblieben. Wiederhole die Regeln und versuche es gleich noch einmal!'};
+}
+
+function endGame(){
+  finished = true;
+  clearInterval(timerId);
+  const p = praise(errors);
+  const time = fmtTime(Date.now()-startTime);
+  $('dEmoji').textContent = p.emoji;
+  $('dTitle').textContent = p.title;
+  $('dText').innerHTML = `Alle 12 Paare gefunden!<br>Fehlversuche: <b>${errors}</b> · Zeit: <b>${time}</b><br><br>${p.text}`;
+  setTimeout(()=>$('overlay').classList.remove('hidden'), 600);
+}
+
+function toStart(){
+  token++; finished = true;
+  clearInterval(timerId);
+  $('overlay').classList.add('hidden');
+  $('game').classList.add('hidden');
+  $('start').classList.remove('hidden');
+}
+
+/* ---------- Events ---------- */
+document.querySelectorAll('.lvl').forEach(b=>b.addEventListener('click',()=>startGame(b.dataset.level)));
+$('bNew').addEventListener('click',()=>startGame(level));
+$('dAgain').addEventListener('click',()=>startGame(level));
+$('bLevel').addEventListener('click',toStart);
+$('dLevel').addEventListener('click',toStart);
+</script>
+</body>
+</html>
